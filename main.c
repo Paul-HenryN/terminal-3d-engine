@@ -24,6 +24,26 @@ typedef struct {
   int nedges;
 } shape_t;
 
+typedef struct {
+  shape_t *shapes;
+  int nshapes;
+  int curr_shape_idx;
+} scene_t;
+
+scene_t init_scene(int nshapes, shape_t *shapes) {
+  scene_t scene = {
+    .nshapes = nshapes,
+    .shapes = malloc(nshapes * sizeof(shape_t)),
+    .curr_shape_idx = nshapes > 0 ? 0 : -1
+  };
+
+  for (int i = 0; i < nshapes; i++) {
+    scene.shapes[i] = shapes[i];
+  }
+
+  return scene;
+}
+
 shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
                       int lon_rings) {
   const int npoints = (lat_rings - 1) * lon_rings + 2;
@@ -256,19 +276,28 @@ void rotate_shape_y(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_y(&shape->points[i], center, angle);
   }
-  rotate_y(&shape->center, center, angle);
+  // Only rotate the shape's center if rotating around an external point
+  if (center != &shape->center) {
+    rotate_y(&shape->center, center, angle);
+  }
 }
 void rotate_shape_x(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_x(&shape->points[i], center, angle);
   }
-  rotate_x(&shape->center, center, angle);
+  // Only rotate the shape's center if rotating around an external point
+  if (center != &shape->center) {
+    rotate_x(&shape->center, center, angle);
+  }
 }
 void rotate_shape_z(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_z(&shape->points[i], center, angle);
   }
-  rotate_z(&shape->center, center, angle);
+  // Only rotate the shape's center if rotating around an external point
+  if (center != &shape->center) {
+    rotate_z(&shape->center, center, angle);
+  }
 }
 
 void free_shape(shape_t *shape) {
@@ -276,6 +305,15 @@ void free_shape(shape_t *shape) {
   free(shape->edges);
   shape->npoints = 0;
   shape->nedges = 0;
+}
+
+void free_scene(scene_t *scene) {
+  for (int i = 0; i < scene->nshapes; i++) {
+    free_shape(&scene->shapes[i]);
+  }
+  free(scene->shapes);
+  scene->nshapes = 0;
+  scene->curr_shape_idx = -1;
 }
 
 void render_shape(const shape_t *shape) {
@@ -317,53 +355,82 @@ void render_shape(const shape_t *shape) {
   }
 }
 
-int main(void) {
-  shape_t pyramid = create_pyramid(0, 4, 0, 4, 4);
-  shape_t sphere = create_sphere(0, 0, 0, 2, 6, 6);
-  shape_t cube = create_cube(0, -4, 0, 3);
-  point_t rotation_center = sphere.center;
+void render_scene(const scene_t *scene) {
+  for (int i = 0; i < scene->nshapes; i++) {
+    if (i == scene->curr_shape_idx) {
+      attron(COLOR_PAIR(1));
+    }
+    render_shape(&scene->shapes[i]);
+    attroff(COLOR_PAIR(1));
+  }
+}
 
-  rotate_shape_x(&pyramid, &pyramid.center, M_PI / 16);
-  rotate_shape_y(&pyramid, &pyramid.center, M_PI / 16);
-  rotate_shape_x(&cube, &cube.center, M_PI / 16);
-  rotate_shape_y(&cube, &cube.center, M_PI / 16);
+int main(void) {
+  shape_t init_shapes[] = {
+    create_cube(0, -4, 0, 3),
+    create_sphere(0, 0, 0, 2, 6, 6),
+    create_pyramid(0, 4, 0, 4, 4),
+  };
+
+  scene_t scene = init_scene(3, init_shapes);
 
   initscr();
   noecho();
   curs_set(0);
+  keypad(stdscr, TRUE);
+  start_color();
+  init_pair(1, COLOR_BLUE, COLOR_BLACK);
+
+  render_scene(&scene);
+  refresh();
 
   int input = 0;
-
-  do {
-    clear();
-    render_shape(&cube);
-    render_shape(&pyramid);
-    render_shape(&sphere);
-
-    refresh();
+  while ((input = getch()) != 'e') {
+    shape_t *curr_shape = &scene.shapes[scene.curr_shape_idx];
 
     if (input == 'l') {
-      rotate_shape_y(&sphere, &rotation_center, M_PI / 16);
+      rotate_shape_y(curr_shape, &curr_shape->center, M_PI / 16);
     }
     if (input == 'j') {
-      rotate_shape_y(&sphere, &rotation_center, -1 * M_PI / 16);
+      rotate_shape_y(curr_shape, &curr_shape->center, -1 * M_PI / 16);
     }
     if (input == 'i') {
-      rotate_shape_x(&sphere, &rotation_center, M_PI / 16);
+      rotate_shape_x(curr_shape, &curr_shape->center, M_PI / 16);
     }
     if (input == 'k') {
-      rotate_shape_x(&sphere, &rotation_center, -1 * M_PI / 16);
+      rotate_shape_x(curr_shape, &curr_shape->center, -1 * M_PI / 16);
     }
     if (input == 'q') {
-      rotate_shape_z(&sphere, &rotation_center, M_PI / 16);
+      rotate_shape_z(curr_shape, &curr_shape->center, M_PI / 16);
     }
     if (input == 'd') {
-      rotate_shape_z(&sphere, &rotation_center, -1 * M_PI / 16);
+      rotate_shape_z(curr_shape, &curr_shape->center, -1 * M_PI / 16);
+    }
+    if (input == KEY_RIGHT) {
+      if (scene.nshapes == 0) continue;
+
+      if (scene.curr_shape_idx < scene.nshapes - 1) {
+        scene.curr_shape_idx++;
+      } else {
+        scene.curr_shape_idx = 0;
+      }
+    }
+    if (input == KEY_LEFT) {
+      if (scene.nshapes == 0) continue;
+
+      if (scene.curr_shape_idx > 0) {
+        scene.curr_shape_idx--;
+      } else {
+        scene.curr_shape_idx = scene.nshapes - 1;
+      }
     }
 
-  } while ((input = getch()) != 'e');
+    clear();
+    render_scene(&scene);
+    refresh();
+  }
 
-  free_shape(&pyramid);
+  free_scene(&scene);
 
   endwin();
   return 0;

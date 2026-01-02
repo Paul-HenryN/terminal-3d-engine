@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#define SCALE_FACTOR 5
+#define SCALE_FACTOR 4
 
 typedef struct {
   float x;
@@ -23,6 +23,102 @@ typedef struct {
   int npoints;
   int nedges;
 } shape_t;
+
+shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
+                      int lon_rings) {
+  const int npoints = (lat_rings - 1) * lon_rings + 2;
+  // Edges: horizontal rings + vertical lines + pole connections
+  const int horizontal_edges = (lat_rings - 1) * lon_rings;
+  const int vertical_edges = (lat_rings - 2) * lon_rings;
+  const int pole_edges = lon_rings * 2;
+  const int nedges = horizontal_edges + vertical_edges + pole_edges;
+
+  point_t *points = malloc(npoints * sizeof(point_t));
+  if (points == NULL) {
+    perror("sphere points malloc");
+    exit(EXIT_FAILURE);
+  }
+
+  edge_t *edges = malloc(nedges * sizeof(edge_t));
+  if (edges == NULL) {
+    perror("sphere edges malloc");
+    exit(EXIT_FAILURE);
+  }
+
+  shape_t sphere = {.points = points,
+                    .edges = edges,
+                    .center = (point_t){cx, cy, cz},
+                    .npoints = npoints,
+                    .nedges = nedges};
+
+  // North pole (index 0) and south pole (index npoints - 1)
+  sphere.points[0] = (point_t){cx, cy + radius, cz};
+  sphere.points[npoints - 1] = (point_t){cx, cy - radius, cz};
+
+  // Generate middle ring points
+  // Points are stored: [north_pole, ring1_lon0, ring1_lon1, ..., ring2_lon0,
+  // ..., south_pole]
+  int point_idx = 1;
+
+  for (int lat = 1; lat < lat_rings; lat++) {
+    float theta = lat * (M_PI / lat_rings);
+
+    for (int lon = 0; lon < lon_rings; lon++) {
+      float phi = lon * (2 * M_PI / lon_rings);
+
+      sphere.points[point_idx] =
+          (point_t){.x = cx + radius * sin(theta) * cos(phi),
+                    .y = cy + radius * cos(theta),
+                    .z = cz + radius * sin(theta) * sin(phi)};
+
+      point_idx++;
+    }
+  }
+
+  // Generate edges
+  int edge_idx = 0;
+
+// Helper to get point index for a given lat ring and lon position
+// lat=0 means first ring (after north pole), lat=lat_rings-2 means last ring
+// (before south pole)
+#define RING_POINT(lat, lon) (1 + (lat) * lon_rings + (lon))
+
+  // Horizontal edges (around each latitude ring)
+  for (int lat = 0; lat < lat_rings - 1; lat++) {
+    for (int lon = 0; lon < lon_rings; lon++) {
+      int next_lon = (lon + 1) % lon_rings;
+      sphere.edges[edge_idx++] =
+          (edge_t){&sphere.points[RING_POINT(lat, lon)],
+                   &sphere.points[RING_POINT(lat, next_lon)]};
+    }
+  }
+
+  // Vertical edges (connecting adjacent latitude rings)
+  for (int lat = 0; lat < lat_rings - 2; lat++) {
+    for (int lon = 0; lon < lon_rings; lon++) {
+      sphere.edges[edge_idx++] =
+          (edge_t){&sphere.points[RING_POINT(lat, lon)],
+                   &sphere.points[RING_POINT(lat + 1, lon)]};
+    }
+  }
+
+  // North pole connections (to first ring)
+  for (int lon = 0; lon < lon_rings; lon++) {
+    sphere.edges[edge_idx++] =
+        (edge_t){&sphere.points[0], &sphere.points[RING_POINT(0, lon)]};
+  }
+
+  // South pole connections (to last ring)
+  for (int lon = 0; lon < lon_rings; lon++) {
+    sphere.edges[edge_idx++] =
+        (edge_t){&sphere.points[npoints - 1],
+                 &sphere.points[RING_POINT(lat_rings - 2, lon)]};
+  }
+
+#undef RING_POINT
+
+  return sphere;
+}
 
 shape_t create_pyramid(float cy, float cx, float cz, float height, float base) {
   const int npoints = 5;
@@ -160,16 +256,19 @@ void rotate_shape_y(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_y(&shape->points[i], center, angle);
   }
+  rotate_y(&shape->center, center, angle);
 }
 void rotate_shape_x(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_x(&shape->points[i], center, angle);
   }
+  rotate_x(&shape->center, center, angle);
 }
 void rotate_shape_z(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_z(&shape->points[i], center, angle);
   }
+  rotate_z(&shape->center, center, angle);
 }
 
 void free_shape(shape_t *shape) {
@@ -219,8 +318,15 @@ void render_shape(const shape_t *shape) {
 }
 
 int main(void) {
-  shape_t pyramid = create_pyramid(0, 0, 0, 2, 2);
-  point_t rotation_center = pyramid.center;
+  shape_t pyramid = create_pyramid(0, 4, 0, 4, 4);
+  shape_t sphere = create_sphere(0, 0, 0, 2, 6, 6);
+  shape_t cube = create_cube(0, -4, 0, 3);
+  point_t rotation_center = sphere.center;
+
+  rotate_shape_x(&pyramid, &pyramid.center, M_PI / 16);
+  rotate_shape_y(&pyramid, &pyramid.center, M_PI / 16);
+  rotate_shape_x(&cube, &cube.center, M_PI / 16);
+  rotate_shape_y(&cube, &cube.center, M_PI / 16);
 
   initscr();
   noecho();
@@ -230,27 +336,29 @@ int main(void) {
 
   do {
     clear();
+    render_shape(&cube);
     render_shape(&pyramid);
+    render_shape(&sphere);
 
     refresh();
 
     if (input == 'l') {
-      rotate_shape_y(&pyramid, &rotation_center, M_PI / 16);
+      rotate_shape_y(&sphere, &rotation_center, M_PI / 16);
     }
     if (input == 'j') {
-      rotate_shape_y(&pyramid, &rotation_center, -1 * M_PI / 16);
+      rotate_shape_y(&sphere, &rotation_center, -1 * M_PI / 16);
     }
     if (input == 'i') {
-      rotate_shape_x(&pyramid, &rotation_center, M_PI / 16);
+      rotate_shape_x(&sphere, &rotation_center, M_PI / 16);
     }
     if (input == 'k') {
-      rotate_shape_x(&pyramid, &rotation_center, -1 * M_PI / 16);
+      rotate_shape_x(&sphere, &rotation_center, -1 * M_PI / 16);
     }
     if (input == 'q') {
-      rotate_shape_z(&pyramid, &rotation_center, M_PI / 16);
+      rotate_shape_z(&sphere, &rotation_center, M_PI / 16);
     }
     if (input == 'd') {
-      rotate_shape_z(&pyramid, &rotation_center, -1 * M_PI / 16);
+      rotate_shape_z(&sphere, &rotation_center, -1 * M_PI / 16);
     }
 
   } while ((input = getch()) != 'e');

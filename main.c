@@ -145,6 +145,17 @@ void rotate_x(point_t *point, const point_t *center, double angle) {
   point->z += center->z;
 }
 
+void rotate_z(point_t *point, const point_t *center, double angle) {
+  float x = point->x - center->x;
+  float y = point->y - center->y;
+
+  point->x = x * cos(angle) - y * sin(angle);
+  point->y = x * sin(angle) + y * cos(angle);
+
+  point->x += center->x;
+  point->y += center->y;
+}
+
 void rotate_shape_y(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_y(&shape->points[i], center, angle);
@@ -153,6 +164,11 @@ void rotate_shape_y(shape_t *shape, const point_t *center, double angle) {
 void rotate_shape_x(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_x(&shape->points[i], center, angle);
+  }
+}
+void rotate_shape_z(shape_t *shape, const point_t *center, double angle) {
+  for (int i = 0; i < shape->npoints; i++) {
+    rotate_z(&shape->points[i], center, angle);
   }
 }
 
@@ -229,6 +245,12 @@ int main(void) {
     }
     if (input == 'k') {
       rotate_shape_x(&pyramid, &rotation_center, -1 * M_PI / 16);
+    }
+    if (input == 'q') {
+      rotate_shape_z(&pyramid, &rotation_center, M_PI / 16);
+    }
+    if (input == 'd') {
+      rotate_shape_z(&pyramid, &rotation_center, -1 * M_PI / 16);
     }
 
   } while ((input = getch()) != 'e');

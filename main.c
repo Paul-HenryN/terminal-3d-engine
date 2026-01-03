@@ -6,8 +6,7 @@
 #include "types.h"
 #include <ncurses.h>
 
-int main(void)
-{
+int main(void) {
   state_t state = {.scene = new_scene(), .tool = TRANSLATE};
   scene_t *scene = &state.scene;
 
@@ -27,12 +26,10 @@ int main(void)
   refresh();
 
   int input = 0;
-  while ((input = getch()) != 'e')
-  {
+  while ((input = getch()) != 'e') {
     shape_t *curr_shape = &scene->shapes[scene->curr_shape_idx];
 
-    switch (input)
-    {
+    switch (input) {
     case KEY_LEFT:
       scene_select_prev_shape(scene);
       break;
@@ -40,8 +37,7 @@ int main(void)
       scene_select_next_shape(scene);
       break;
     case 'l':
-      switch (state.tool)
-      {
+      switch (state.tool) {
       case ROTATE:
         rotate_shape_y(curr_shape, &curr_shape->center, -ROTATE_INCR);
         break;
@@ -53,8 +49,7 @@ int main(void)
       }
       break;
     case 'j':
-      switch (state.tool)
-      {
+      switch (state.tool) {
       case ROTATE:
         rotate_shape_y(curr_shape, &curr_shape->center, ROTATE_INCR);
         break;
@@ -66,8 +61,7 @@ int main(void)
       }
       break;
     case 'i':
-      switch (state.tool)
-      {
+      switch (state.tool) {
       case ROTATE:
         rotate_shape_x(curr_shape, &curr_shape->center, -ROTATE_INCR);
         break;
@@ -79,8 +73,7 @@ int main(void)
       }
       break;
     case 'k':
-      switch (state.tool)
-      {
+      switch (state.tool) {
       case ROTATE:
         rotate_shape_x(curr_shape, &curr_shape->center, ROTATE_INCR);
         break;
@@ -92,8 +85,7 @@ int main(void)
       }
       break;
     case 'q':
-      switch (state.tool)
-      {
+      switch (state.tool) {
       case ROTATE:
         rotate_shape_z(curr_shape, &curr_shape->center, ROTATE_INCR);
         break;
@@ -103,8 +95,7 @@ int main(void)
       }
       break;
     case 'd':
-      switch (state.tool)
-      {
+      switch (state.tool) {
       case ROTATE:
         rotate_shape_z(curr_shape, &curr_shape->center, -ROTATE_INCR);
         break;

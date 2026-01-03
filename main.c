@@ -30,20 +30,6 @@ typedef struct {
   int curr_shape_idx;
 } scene_t;
 
-scene_t init_scene(int nshapes, shape_t *shapes) {
-  scene_t scene = {
-    .nshapes = nshapes,
-    .shapes = malloc(nshapes * sizeof(shape_t)),
-    .curr_shape_idx = nshapes > 0 ? 0 : -1
-  };
-
-  for (int i = 0; i < nshapes; i++) {
-    scene.shapes[i] = shapes[i];
-  }
-
-  return scene;
-}
-
 shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
                       int lon_rings) {
   const int npoints = (lat_rings - 1) * lon_rings + 2;
@@ -56,12 +42,14 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
   point_t *points = malloc(npoints * sizeof(point_t));
   if (points == NULL) {
     perror("sphere points malloc");
+    endwin();
     exit(EXIT_FAILURE);
   }
 
   edge_t *edges = malloc(nedges * sizeof(edge_t));
   if (edges == NULL) {
     perror("sphere edges malloc");
+    endwin();
     exit(EXIT_FAILURE);
   }
 
@@ -139,7 +127,6 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
 
   return sphere;
 }
-
 shape_t create_pyramid(float cy, float cx, float cz, float height, float base) {
   const int npoints = 5;
   const int nedges = 8;
@@ -147,12 +134,14 @@ shape_t create_pyramid(float cy, float cx, float cz, float height, float base) {
   point_t *points = malloc(npoints * sizeof(point_t));
   if (points == NULL) {
     perror("pyramid points malloc");
+    endwin();
     exit(EXIT_FAILURE);
   }
 
   edge_t *edges = malloc(nedges * sizeof(edge_t));
   if (edges == NULL) {
     perror("pyramid edges malloc");
+    endwin();
     exit(EXIT_FAILURE);
   }
 
@@ -179,7 +168,6 @@ shape_t create_pyramid(float cy, float cx, float cz, float height, float base) {
 
   return pyramid;
 }
-
 shape_t create_cube(float cy, float cx, float cz, float side) {
   const int npoints = 8;
   const int nedges = 12;
@@ -187,12 +175,14 @@ shape_t create_cube(float cy, float cx, float cz, float side) {
   point_t *points = malloc(npoints * sizeof(point_t));
   if (points == NULL) {
     perror("cube points malloc");
+    endwin();
     exit(EXIT_FAILURE);
   }
 
   edge_t *edges = malloc(nedges * sizeof(edge_t));
   if (edges == NULL) {
     perror("cube edges malloc");
+    endwin();
     exit(EXIT_FAILURE);
   }
 
@@ -249,7 +239,6 @@ void rotate_y(point_t *point, const point_t *center, double angle) {
   point->x += center->x;
   point->z += center->z;
 }
-
 void rotate_x(point_t *point, const point_t *center, double angle) {
   float y = point->y - center->y;
   float z = point->z - center->z;
@@ -260,7 +249,6 @@ void rotate_x(point_t *point, const point_t *center, double angle) {
   point->y += center->y;
   point->z += center->z;
 }
-
 void rotate_z(point_t *point, const point_t *center, double angle) {
   float x = point->x - center->x;
   float y = point->y - center->y;
@@ -271,12 +259,10 @@ void rotate_z(point_t *point, const point_t *center, double angle) {
   point->x += center->x;
   point->y += center->y;
 }
-
 void rotate_shape_y(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_y(&shape->points[i], center, angle);
   }
-  // Only rotate the shape's center if rotating around an external point
   if (center != &shape->center) {
     rotate_y(&shape->center, center, angle);
   }
@@ -285,7 +271,6 @@ void rotate_shape_x(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_x(&shape->points[i], center, angle);
   }
-  // Only rotate the shape's center if rotating around an external point
   if (center != &shape->center) {
     rotate_x(&shape->center, center, angle);
   }
@@ -294,7 +279,6 @@ void rotate_shape_z(shape_t *shape, const point_t *center, double angle) {
   for (int i = 0; i < shape->npoints; i++) {
     rotate_z(&shape->points[i], center, angle);
   }
-  // Only rotate the shape's center if rotating around an external point
   if (center != &shape->center) {
     rotate_z(&shape->center, center, angle);
   }
@@ -306,7 +290,6 @@ void free_shape(shape_t *shape) {
   shape->npoints = 0;
   shape->nedges = 0;
 }
-
 void free_scene(scene_t *scene) {
   for (int i = 0; i < scene->nshapes; i++) {
     free_shape(&scene->shapes[i]);
@@ -354,7 +337,6 @@ void render_shape(const shape_t *shape) {
     mvaddch(y, x, '#');
   }
 }
-
 void render_scene(const scene_t *scene) {
   for (int i = 0; i < scene->nshapes; i++) {
     if (i == scene->curr_shape_idx) {
@@ -365,21 +347,45 @@ void render_scene(const scene_t *scene) {
   }
 }
 
-int main(void) {
-  shape_t init_shapes[] = {
-    create_cube(0, -4, 0, 3),
-    create_sphere(0, 0, 0, 2, 6, 6),
-    create_pyramid(0, 4, 0, 4, 4),
+scene_t new_scene(void) {
+  return (scene_t) {
+    .shapes = NULL,
+    .nshapes = 0,
+    .curr_shape_idx = -1
   };
+}
 
-  scene_t scene = init_scene(3, init_shapes);
+void scene_add_shape(scene_t *scene, shape_t shape) {
+  shape_t *new_shapes = realloc(scene->shapes, (scene->nshapes + 1) * sizeof(shape_t));
+
+  if(new_shapes == NULL) {
+    perror("scene_add_shape realloc");
+    endwin();
+    exit(EXIT_FAILURE);
+  }
+
+  scene->shapes = new_shapes;
+  scene->nshapes++;
+  scene->shapes[scene->nshapes - 1] = shape;
+  
+  if(scene->nshapes == 1) {
+    scene->curr_shape_idx = 0;
+  }
+}
+
+int main(void) {
+  scene_t scene = new_scene();
+
+  scene_add_shape(&scene, create_cube(0, -4, 0, 3));
+  scene_add_shape(&scene, create_sphere(0, 0, 0, 2, 6, 6));
+  scene_add_shape(&scene, create_pyramid(0, 4, 0, 4, 4));
 
   initscr();
   noecho();
   curs_set(0);
   keypad(stdscr, TRUE);
   start_color();
-  init_pair(1, COLOR_BLUE, COLOR_BLACK);
+  init_pair(1, COLOR_GREEN, COLOR_BLACK);
 
   render_scene(&scene);
   refresh();

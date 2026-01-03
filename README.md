@@ -1,4 +1,4 @@
-# Terminal 3D Graphics Engine
+# Terminal 3D Engine
 
 A terminal-based 3D wireframe renderer built in C using ncurses. Render and manipulate 3D primitives in ASCII art directly in your terminal.
 

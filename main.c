@@ -4,19 +4,30 @@
 #include <stdlib.h>
 #include <unistd.h>
 #define SCALE_FACTOR 4
+#define ROTATE_INCR M_PI / 16
+#define TRANSLATE_INCR 0.5
 
-typedef struct {
+typedef enum
+{
+  ROTATE,
+  TRANSLATE
+} tool_t;
+
+typedef struct
+{
   float x;
   float y;
   float z;
 } point_t;
 
-typedef struct {
+typedef struct
+{
   point_t *p1;
   point_t *p2;
 } edge_t;
 
-typedef struct {
+typedef struct
+{
   point_t *points;
   point_t center;
   edge_t *edges;
@@ -24,14 +35,22 @@ typedef struct {
   int nedges;
 } shape_t;
 
-typedef struct {
+typedef struct
+{
   shape_t *shapes;
   int nshapes;
   int curr_shape_idx;
 } scene_t;
 
+typedef struct
+{
+  scene_t scene;
+  tool_t tool;
+} state_t;
+
 shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
-                      int lon_rings) {
+                      int lon_rings)
+{
   const int npoints = (lat_rings - 1) * lon_rings + 2;
   // Edges: horizontal rings + vertical lines + pole connections
   const int horizontal_edges = (lat_rings - 1) * lon_rings;
@@ -40,14 +59,16 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
   const int nedges = horizontal_edges + vertical_edges + pole_edges;
 
   point_t *points = malloc(npoints * sizeof(point_t));
-  if (points == NULL) {
+  if (points == NULL)
+  {
     perror("sphere points malloc");
     endwin();
     exit(EXIT_FAILURE);
   }
 
   edge_t *edges = malloc(nedges * sizeof(edge_t));
-  if (edges == NULL) {
+  if (edges == NULL)
+  {
     perror("sphere edges malloc");
     endwin();
     exit(EXIT_FAILURE);
@@ -68,10 +89,12 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
   // ..., south_pole]
   int point_idx = 1;
 
-  for (int lat = 1; lat < lat_rings; lat++) {
+  for (int lat = 1; lat < lat_rings; lat++)
+  {
     float theta = lat * (M_PI / lat_rings);
 
-    for (int lon = 0; lon < lon_rings; lon++) {
+    for (int lon = 0; lon < lon_rings; lon++)
+    {
       float phi = lon * (2 * M_PI / lon_rings);
 
       sphere.points[point_idx] =
@@ -92,8 +115,10 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
 #define RING_POINT(lat, lon) (1 + (lat) * lon_rings + (lon))
 
   // Horizontal edges (around each latitude ring)
-  for (int lat = 0; lat < lat_rings - 1; lat++) {
-    for (int lon = 0; lon < lon_rings; lon++) {
+  for (int lat = 0; lat < lat_rings - 1; lat++)
+  {
+    for (int lon = 0; lon < lon_rings; lon++)
+    {
       int next_lon = (lon + 1) % lon_rings;
       sphere.edges[edge_idx++] =
           (edge_t){&sphere.points[RING_POINT(lat, lon)],
@@ -102,8 +127,10 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
   }
 
   // Vertical edges (connecting adjacent latitude rings)
-  for (int lat = 0; lat < lat_rings - 2; lat++) {
-    for (int lon = 0; lon < lon_rings; lon++) {
+  for (int lat = 0; lat < lat_rings - 2; lat++)
+  {
+    for (int lon = 0; lon < lon_rings; lon++)
+    {
       sphere.edges[edge_idx++] =
           (edge_t){&sphere.points[RING_POINT(lat, lon)],
                    &sphere.points[RING_POINT(lat + 1, lon)]};
@@ -111,13 +138,15 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
   }
 
   // North pole connections (to first ring)
-  for (int lon = 0; lon < lon_rings; lon++) {
+  for (int lon = 0; lon < lon_rings; lon++)
+  {
     sphere.edges[edge_idx++] =
         (edge_t){&sphere.points[0], &sphere.points[RING_POINT(0, lon)]};
   }
 
   // South pole connections (to last ring)
-  for (int lon = 0; lon < lon_rings; lon++) {
+  for (int lon = 0; lon < lon_rings; lon++)
+  {
     sphere.edges[edge_idx++] =
         (edge_t){&sphere.points[npoints - 1],
                  &sphere.points[RING_POINT(lat_rings - 2, lon)]};
@@ -127,19 +156,22 @@ shape_t create_sphere(float cy, float cx, float cz, float radius, int lat_rings,
 
   return sphere;
 }
-shape_t create_pyramid(float cy, float cx, float cz, float height, float base) {
+shape_t create_pyramid(float cy, float cx, float cz, float height, float base)
+{
   const int npoints = 5;
   const int nedges = 8;
 
   point_t *points = malloc(npoints * sizeof(point_t));
-  if (points == NULL) {
+  if (points == NULL)
+  {
     perror("pyramid points malloc");
     endwin();
     exit(EXIT_FAILURE);
   }
 
   edge_t *edges = malloc(nedges * sizeof(edge_t));
-  if (edges == NULL) {
+  if (edges == NULL)
+  {
     perror("pyramid edges malloc");
     endwin();
     exit(EXIT_FAILURE);
@@ -168,19 +200,22 @@ shape_t create_pyramid(float cy, float cx, float cz, float height, float base) {
 
   return pyramid;
 }
-shape_t create_cube(float cy, float cx, float cz, float side) {
+shape_t create_cube(float cy, float cx, float cz, float side)
+{
   const int npoints = 8;
   const int nedges = 12;
 
   point_t *points = malloc(npoints * sizeof(point_t));
-  if (points == NULL) {
+  if (points == NULL)
+  {
     perror("cube points malloc");
     endwin();
     exit(EXIT_FAILURE);
   }
 
   edge_t *edges = malloc(nedges * sizeof(edge_t));
-  if (edges == NULL) {
+  if (edges == NULL)
+  {
     perror("cube edges malloc");
     endwin();
     exit(EXIT_FAILURE);
@@ -220,16 +255,43 @@ shape_t create_cube(float cy, float cx, float cz, float side) {
   return cube;
 }
 
-void screen_yx(float y, float x, int *screen_y, int *screen_x) {
+void screen_yx(const point_t *point, int *screen_y, int *screen_x)
+{
   int max_y, max_x;
-
   getmaxyx(stdscr, max_y, max_x);
 
-  *screen_y = -1 * SCALE_FACTOR * y + max_y / 2;
-  *screen_x = 2 * SCALE_FACTOR * x + max_x / 2;
+  point_t camera_pos = {0, 0, 10};
+  float fov = 10.0;
+
+  float z_relative = camera_pos.z - point->z;
+
+  *screen_y = -1 * SCALE_FACTOR * fov * (point->y - camera_pos.y) / z_relative +
+              max_y / 2;
+  *screen_x = 2 * SCALE_FACTOR * fov * (point->x - camera_pos.x) / z_relative +
+              max_x / 2;
 }
 
-void rotate_y(point_t *point, const point_t *center, double angle) {
+void translate_x(point_t *point, float dx) { point->x += dx; }
+void translate_y(point_t *point, float dy) { point->y += dy; }
+void translate_shape_x(shape_t *shape, float dx)
+{
+  for (int i = 0; i < shape->npoints; i++)
+  {
+    translate_x(shape->points + i, dx);
+  }
+  translate_x(&shape->center, dx);
+}
+void translate_shape_y(shape_t *shape, float dy)
+{
+  for (int i = 0; i < shape->npoints; i++)
+  {
+    translate_y(shape->points + i, dy);
+  }
+  translate_y(&shape->center, dy);
+}
+
+void rotate_y(point_t *point, const point_t *center, double angle)
+{
   float x = point->x - center->x;
   float z = point->z - center->z;
 
@@ -239,7 +301,8 @@ void rotate_y(point_t *point, const point_t *center, double angle) {
   point->x += center->x;
   point->z += center->z;
 }
-void rotate_x(point_t *point, const point_t *center, double angle) {
+void rotate_x(point_t *point, const point_t *center, double angle)
+{
   float y = point->y - center->y;
   float z = point->z - center->z;
 
@@ -249,7 +312,8 @@ void rotate_x(point_t *point, const point_t *center, double angle) {
   point->y += center->y;
   point->z += center->z;
 }
-void rotate_z(point_t *point, const point_t *center, double angle) {
+void rotate_z(point_t *point, const point_t *center, double angle)
+{
   float x = point->x - center->x;
   float y = point->y - center->y;
 
@@ -259,39 +323,51 @@ void rotate_z(point_t *point, const point_t *center, double angle) {
   point->x += center->x;
   point->y += center->y;
 }
-void rotate_shape_y(shape_t *shape, const point_t *center, double angle) {
-  for (int i = 0; i < shape->npoints; i++) {
+void rotate_shape_y(shape_t *shape, const point_t *center, double angle)
+{
+  for (int i = 0; i < shape->npoints; i++)
+  {
     rotate_y(&shape->points[i], center, angle);
   }
-  if (center != &shape->center) {
+  if (center != &shape->center)
+  {
     rotate_y(&shape->center, center, angle);
   }
 }
-void rotate_shape_x(shape_t *shape, const point_t *center, double angle) {
-  for (int i = 0; i < shape->npoints; i++) {
+void rotate_shape_x(shape_t *shape, const point_t *center, double angle)
+{
+  for (int i = 0; i < shape->npoints; i++)
+  {
     rotate_x(&shape->points[i], center, angle);
   }
-  if (center != &shape->center) {
+  if (center != &shape->center)
+  {
     rotate_x(&shape->center, center, angle);
   }
 }
-void rotate_shape_z(shape_t *shape, const point_t *center, double angle) {
-  for (int i = 0; i < shape->npoints; i++) {
+void rotate_shape_z(shape_t *shape, const point_t *center, double angle)
+{
+  for (int i = 0; i < shape->npoints; i++)
+  {
     rotate_z(&shape->points[i], center, angle);
   }
-  if (center != &shape->center) {
+  if (center != &shape->center)
+  {
     rotate_z(&shape->center, center, angle);
   }
 }
 
-void free_shape(shape_t *shape) {
+void free_shape(shape_t *shape)
+{
   free(shape->points);
   free(shape->edges);
   shape->npoints = 0;
   shape->nedges = 0;
 }
-void free_scene(scene_t *scene) {
-  for (int i = 0; i < scene->nshapes; i++) {
+void free_scene(scene_t *scene)
+{
+  for (int i = 0; i < scene->nshapes; i++)
+  {
     free_shape(&scene->shapes[i]);
   }
   free(scene->shapes);
@@ -299,13 +375,28 @@ void free_scene(scene_t *scene) {
   scene->curr_shape_idx = -1;
 }
 
-void render_shape(const shape_t *shape) {
-  for (int i = 0; i < shape->nedges; i++) {
+char *tool_text(tool_t tool)
+{
+  switch (tool)
+  {
+  case ROTATE:
+    return "(R) ROTATE";
+  case TRANSLATE:
+    return "(T) TRANSLATE";
+  default:
+    return "";
+  }
+}
+
+void render_shape(const shape_t *shape)
+{
+  for (int i = 0; i < shape->nedges; i++)
+  {
     edge_t *edge = shape->edges + i;
 
     int p1x, p1y, p2x, p2y;
-    screen_yx(edge->p1->y, edge->p1->x, &p1y, &p1x);
-    screen_yx(edge->p2->y, edge->p2->x, &p2y, &p2x);
+    screen_yx(edge->p1, &p1y, &p1x);
+    screen_yx(edge->p2, &p2y, &p2x);
 
     int dx = abs(p2x - p1x);
     int dy = abs(p2y - p1y);
@@ -313,52 +404,91 @@ void render_shape(const shape_t *shape) {
     int step_y = p1y < p2y ? 1 : -1;
     int error = dx - dy;
 
-    while (p1x != p2x || p1y != p2y) {
+    while (p1x != p2x || p1y != p2y)
+    {
       mvaddch(p1y, p1x, '.');
       int error2 = 2 * error;
 
-      if (error2 > -dy) {
+      if (error2 > -dy)
+      {
         error -= dy;
         p1x += step_x;
       }
 
-      if (error2 < dx) {
+      if (error2 < dx)
+      {
         error += dx;
         p1y += step_y;
       }
     }
   }
 
-  for (int i = 0; i < shape->npoints; i++) {
+  for (int i = 0; i < shape->npoints; i++)
+  {
     point_t *point = shape->points + i;
     int y, x;
-    screen_yx(point->y, point->x, &y, &x);
+    screen_yx(point, &y, &x);
 
     mvaddch(y, x, '#');
   }
 }
-void render_scene(const scene_t *scene) {
-  for (int i = 0; i < scene->nshapes; i++) {
-    if (i == scene->curr_shape_idx) {
+void render_scene(const scene_t *scene)
+{
+  for (int i = 0; i < scene->nshapes; i++)
+  {
+    if (i == scene->curr_shape_idx)
+    {
       attron(COLOR_PAIR(1));
     }
     render_shape(&scene->shapes[i]);
     attroff(COLOR_PAIR(1));
   }
 }
+void render_menu(const state_t *state)
+{
+  int max_x, max_y;
+  getmaxyx(stdscr, max_y, max_x);
 
-scene_t new_scene(void) {
-  return (scene_t) {
-    .shapes = NULL,
-    .nshapes = 0,
-    .curr_shape_idx = -1
-  };
+  attron(A_REVERSE);
+  for (int x = 0; x < max_x; x++)
+  {
+    mvaddch(max_y - 1, x, ' ');
+  }
+
+  tool_t tools[] = {ROTATE, TRANSLATE};
+  int size = sizeof(tools) / sizeof(tool_t);
+
+  move(max_y - 1, 1);
+  for (int i = 0; i < size; i++)
+  {
+    int is_curr_tool = tools[i] == state->tool;
+
+    if (is_curr_tool)
+      attron(A_BOLD);
+    printw("%s", tool_text(tools[i]));
+    if (is_curr_tool)
+      addch('*');
+
+    attroff(A_BOLD);
+
+    addch('\t');
+  }
+
+  attroff(A_REVERSE);
 }
 
-void scene_add_shape(scene_t *scene, shape_t shape) {
-  shape_t *new_shapes = realloc(scene->shapes, (scene->nshapes + 1) * sizeof(shape_t));
+scene_t new_scene(void)
+{
+  return (scene_t){.shapes = NULL, .nshapes = 0, .curr_shape_idx = -1};
+}
 
-  if(new_shapes == NULL) {
+void scene_add_shape(scene_t *scene, shape_t shape)
+{
+  shape_t *new_shapes =
+      realloc(scene->shapes, (scene->nshapes + 1) * sizeof(shape_t));
+
+  if (new_shapes == NULL)
+  {
     perror("scene_add_shape realloc");
     endwin();
     exit(EXIT_FAILURE);
@@ -367,18 +497,55 @@ void scene_add_shape(scene_t *scene, shape_t shape) {
   scene->shapes = new_shapes;
   scene->nshapes++;
   scene->shapes[scene->nshapes - 1] = shape;
-  
-  if(scene->nshapes == 1) {
+
+  if (scene->nshapes == 1)
+  {
     scene->curr_shape_idx = 0;
   }
 }
 
-int main(void) {
-  scene_t scene = new_scene();
+void scene_select_next_shape(scene_t *scene)
+{
+  if (scene->nshapes == 0)
+  {
+    return;
+  }
 
-  scene_add_shape(&scene, create_cube(0, -4, 0, 3));
-  scene_add_shape(&scene, create_sphere(0, 0, 0, 2, 6, 6));
-  scene_add_shape(&scene, create_pyramid(0, 4, 0, 4, 4));
+  if (scene->curr_shape_idx < scene->nshapes - 1)
+  {
+    scene->curr_shape_idx++;
+  }
+  else
+  {
+    scene->curr_shape_idx = 0;
+  }
+}
+
+void scene_select_prev_shape(scene_t *scene)
+{
+  if (scene->nshapes == 0)
+  {
+    return;
+  }
+
+  if (scene->curr_shape_idx > 0)
+  {
+    scene->curr_shape_idx--;
+  }
+  else
+  {
+    scene->curr_shape_idx = scene->nshapes - 1;
+  }
+}
+
+int main(void)
+{
+  state_t state = {.scene = new_scene(), .tool = TRANSLATE};
+  scene_t *scene = &state.scene;
+
+  scene_add_shape(scene, create_cube(0, -4, 0, 3));
+  scene_add_shape(scene, create_sphere(0, 0, 0, 2, 6, 6));
+  scene_add_shape(scene, create_pyramid(0, 4, 0, 4, 4));
 
   initscr();
   noecho();
@@ -387,56 +554,114 @@ int main(void) {
   start_color();
   init_pair(1, COLOR_GREEN, COLOR_BLACK);
 
-  render_scene(&scene);
+  render_scene(scene);
+  render_menu(&state);
   refresh();
 
   int input = 0;
-  while ((input = getch()) != 'e') {
-    shape_t *curr_shape = &scene.shapes[scene.curr_shape_idx];
+  while ((input = getch()) != 'e')
+  {
+    shape_t *curr_shape = &scene->shapes[scene->curr_shape_idx];
 
-    if (input == 'l') {
-      rotate_shape_y(curr_shape, &curr_shape->center, M_PI / 16);
-    }
-    if (input == 'j') {
-      rotate_shape_y(curr_shape, &curr_shape->center, -1 * M_PI / 16);
-    }
-    if (input == 'i') {
-      rotate_shape_x(curr_shape, &curr_shape->center, M_PI / 16);
-    }
-    if (input == 'k') {
-      rotate_shape_x(curr_shape, &curr_shape->center, -1 * M_PI / 16);
-    }
-    if (input == 'q') {
-      rotate_shape_z(curr_shape, &curr_shape->center, M_PI / 16);
-    }
-    if (input == 'd') {
-      rotate_shape_z(curr_shape, &curr_shape->center, -1 * M_PI / 16);
-    }
-    if (input == KEY_RIGHT) {
-      if (scene.nshapes == 0) continue;
-
-      if (scene.curr_shape_idx < scene.nshapes - 1) {
-        scene.curr_shape_idx++;
-      } else {
-        scene.curr_shape_idx = 0;
+    switch (input)
+    {
+    case KEY_LEFT:
+      scene_select_prev_shape(scene);
+      break;
+    case KEY_RIGHT:
+      scene_select_next_shape(scene);
+      break;
+    case 'l':
+      switch (state.tool)
+      {
+      case ROTATE:
+        rotate_shape_y(curr_shape, &curr_shape->center, -ROTATE_INCR);
+        break;
+      case TRANSLATE:
+        translate_shape_x(curr_shape, TRANSLATE_INCR);
+        break;
+      default:
+        break;
       }
-    }
-    if (input == KEY_LEFT) {
-      if (scene.nshapes == 0) continue;
-
-      if (scene.curr_shape_idx > 0) {
-        scene.curr_shape_idx--;
-      } else {
-        scene.curr_shape_idx = scene.nshapes - 1;
+      break;
+    case 'j':
+      switch (state.tool)
+      {
+      case ROTATE:
+        rotate_shape_y(curr_shape, &curr_shape->center, ROTATE_INCR);
+        break;
+      case TRANSLATE:
+        translate_shape_x(curr_shape, -TRANSLATE_INCR);
+        break;
+      default:
+        break;
       }
+      break;
+    case 'i':
+      switch (state.tool)
+      {
+      case ROTATE:
+        rotate_shape_x(curr_shape, &curr_shape->center, -ROTATE_INCR);
+        break;
+      case TRANSLATE:
+        translate_shape_y(curr_shape, TRANSLATE_INCR);
+        break;
+      default:
+        break;
+      }
+      break;
+    case 'k':
+      switch (state.tool)
+      {
+      case ROTATE:
+        rotate_shape_x(curr_shape, &curr_shape->center, ROTATE_INCR);
+        break;
+      case TRANSLATE:
+        translate_shape_y(curr_shape, -TRANSLATE_INCR);
+        break;
+      default:
+        break;
+      }
+      break;
+    case 'q':
+      switch (state.tool)
+      {
+      case ROTATE:
+        rotate_shape_z(curr_shape, &curr_shape->center, ROTATE_INCR);
+        break;
+      case TRANSLATE:
+        // No translation in z for now
+        break;
+      }
+      break;
+    case 'd':
+      switch (state.tool)
+      {
+      case ROTATE:
+        rotate_shape_z(curr_shape, &curr_shape->center, -ROTATE_INCR);
+        break;
+      case TRANSLATE:
+        // No translation in z for now
+        break;
+      }
+      break;
+    case 'R':
+      state.tool = ROTATE;
+      break;
+    case 'T':
+      state.tool = TRANSLATE;
+      break;
+    default:
+      break;
     }
 
     clear();
-    render_scene(&scene);
+    render_scene(scene);
+    render_menu(&state);
     refresh();
   }
 
-  free_scene(&scene);
+  free_scene(scene);
 
   endwin();
   return 0;
